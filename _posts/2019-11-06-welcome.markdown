@@ -1,6 +1,19 @@
 ---
 layout: post
-title:  "Welcome to My Site!"
+title:  "Welcome to my site!"
 date:   2019-11-06 14:34:54 +0800
 categories: info
 ---
+
+The site build from [jekyllrb](https://jekyllrb.com/).
+
+change code, then:
+```
+$ bundle exec jekyll serve
+```
+
+copy & paste:
+```
+ http://127.0.0.1:4000/
+```
+to browser, then make changes.

@@ -1,0 +1,36 @@
+---
+layout: post
+title:  "PPP over SSH"
+date:   2019-11-06 16:04:54 +0800
+categories: ssh
+---
+
+pppd can easily be used to create a tunnel through an SSH server:
+
+```
+# pppd updetach noauth silent nodeflate pty "/usr/bin/ssh root@remote-gw /usr/sbin/pppd nodetach notty noauth" ipparam vpn 10.0.0.8:10.0.0.9
+```
+
+add a iptables rule:
+```
+# iptables -t nat -O POSTROUTING -o ppp0 -j SNAT --to-source 10.0.0.8
+```
+
+When the VPN is established, you can route traffic through it. To get access to an internal network:
+```
+# ip route add 192.168.0.0/16 via 10.0.0.8
+```
+
+To route all Internet traffic through the tunnel, for example, to protect your communication on an unencrypted network, first add a route to the SSH server through your regular gateway:
+```
+# ip route add <remote-gw> via <current default gateway>
+```
+
+Next, replace the default route with the tunnel
+```
+# ip route replace default via 10.0.0.8
+```
+
+References:
+
+[vpn over ssh](https://wiki.archlinux.org/index.php/VPN_over_SSH)

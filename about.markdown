@@ -4,4 +4,4 @@ title: About
 permalink: /about/
 ---
 
-Contack me [mail](leyyer@gmail.com)
+Contach me [mail](leyyer@gmail.com)
