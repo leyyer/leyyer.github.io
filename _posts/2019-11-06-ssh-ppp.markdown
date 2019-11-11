@@ -8,7 +8,7 @@ categories: ssh
 pppd can easily be used to create a tunnel through an SSH server:
 
 ```
-# pppd updetach noauth silent nodeflate pty "/usr/bin/ssh root@remote-gw /usr/sbin/pppd nodetach notty noauth" ipparam vpn 10.0.0.8:10.0.0.9
+# pppd updetach noauth silent nodeflate pty "/usr/bin/ssh root@remote-gw /usr/sbin/pppd nodetach notty noauth" 10.0.0.8:10.0.0.9
 ```
 
 add a iptables rule:
@@ -18,7 +18,7 @@ add a iptables rule:
 
 When the VPN is established, you can route traffic through it. To get access to an internal network:
 ```
-# ip route add 192.168.0.0/16 via 10.0.0.8
+# ip route add 192.168.0.0/16 via 10.0.0.9
 ```
 
 To route all Internet traffic through the tunnel, for example, to protect your communication on an unencrypted network, first add a route to the SSH server through your regular gateway:
@@ -28,7 +28,7 @@ To route all Internet traffic through the tunnel, for example, to protect your c
 
 Next, replace the default route with the tunnel
 ```
-# ip route replace default via 10.0.0.8
+# ip route replace default via 10.0.0.9
 ```
 
 References:
