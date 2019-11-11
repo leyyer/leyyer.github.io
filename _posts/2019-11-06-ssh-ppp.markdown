@@ -16,6 +16,11 @@ add a iptables rule:
 # iptables -t nat -O POSTROUTING -o ppp0 -j SNAT --to-source 10.0.0.8
 ```
 
+add a route entry:
+```
+# ip route add 10.0.0.0/24 dev ppp0
+````
+
 When the VPN is established, you can route traffic through it. To get access to an internal network:
 ```
 # ip route add 192.168.0.0/16 via 10.0.0.9

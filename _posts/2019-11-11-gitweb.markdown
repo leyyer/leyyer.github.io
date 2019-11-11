@@ -1,0 +1,23 @@
+---
+layout: post
+title:  "Add gitweb support to openwrt system"
+date:   2019-11-11 11:56:56 +0800
+categories: openwrt
+---
+
+Install packages:
+```
+opkg update
+opkg install git-gitweb perlbase-filetest perlbase-storable
+```
+
+You can see gitweb cat [http://your-host/cgi-bin/gitweb.cgi](http://your-host/cgi-bin/gitweb.cgi).
+in ```/etc/config/uhttpd``` add:
+```
+        list index_page 'gitweb.cgi'
+        list index_page 'index.html'
+        list alias '/git=/cgi-bin/gitweb.cgi'
+```
+With this config you can point at [http://your-host/git](http://your-host/git) and see what gitweb is publishing.
+
+change ```$projectroot = "/pub/scm"``` in ```/www/cgi-bin/gitweb.cgi``` point to your git repositories.
