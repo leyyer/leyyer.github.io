@@ -1,0 +1,188 @@
+---
+layout: post
+title:  "安装 OpenVPN 服务器"
+date:   2019-11-17 15:53:54 +0800
+categories: openwrt
+---
+
+### I. 安装必要软件
+ssh 登陆到路由器上，执行命令：
+```
+opkg update
+opkg install openvpn-openssl luci-app-openvpn openssl-utils
+```
+
+### II. 生成证书
+
+# 1. 创建目录
+
+```
+PKI_DIR="/etc/openvpn/ssl"
+mkdir -p ${PKI_DIR}
+chmod -R 0600 ${PKI_DIR}
+cd ${PKI_DIR}
+touch index.txt; echo 1000 > serial
+```
+
+# 2. 配置 ```openssl```
+拷贝 ```/etc/ssl/openssl.cnf```到前面创建的目录:
+```
+cp /etc/ssl/openssl.cnf ${PKI_DIR}
+```
+
+修改下面内容：
+```
+PKI_CNF=${PKI_DIR}/openssl.cnf
+
+sed -i '/^dir/   s:=.*:= /etc/openvpn/ssl:'                ${PKI_CNF}
+sed -i '/.*Name/ s:= match:= optional:'                    ${PKI_CNF}
+
+sed -i '/organizationName_default/    s:= .*:= Microsoft:' ${PKI_CNF}
+sed -i '/stateOrProvinceName_default/ s:= .*:= BeiJing:'   ${PKI_CNF}
+sed -i '/countryName_default/         s:= .*:= CN:'        ${PKI_CNF}
+
+sed -i '/default_days/   s:=.*:= 3650:'                    ${PKI_CNF} ## default usu.: -days 365 
+sed -i '/default_bits/   s:=.*:= 4096:'                    ${PKI_CNF} ## default usu.: -newkey rsa:2048
+```
+
+添加内容：
+```
+cat >> ${PKI_CNF} <<"EOF"
+###############################################################################
+### Check via: openssl x509 -text -noout -in *.crt | grep 509 -A 1
+[ my-server ] 
+# X509v3 Key Usage:          Digital Signature, Key Encipherment
+# X509v3 Extended Key Usage: TLS Web Server Authentication
+  keyUsage = digitalSignature, keyEncipherment
+  extendedKeyUsage = serverAuth
+
+[ my-client ] 
+# X509v3 Key Usage:          Digital Signature
+# X509v3 Extended Key Usage: TLS Web Client Authentication
+  keyUsage = digitalSignature
+  extendedKeyUsage = clientAuth
+
+EOF
+```
+## 3. 创建密钥文件
+
+```server``` 端文件：
+```
+penssl req -batch -nodes -new -keyout "ca.key" -out "ca.crt" -x509 -config ${PKI_CNF}  ## x509 (self-signed) for the CA
+openssl req -batch -nodes -new -keyout "my-server.key" -out "my-server.csr" -subj "/CN=my-server" -config ${PKI_CNF}
+openssl ca  -batch -keyfile "ca.key" -cert "ca.crt" -in "my-server.csr" -out "my-server.crt" -config ${PKI_CNF} -extensions my-server
+openvpn --genkey --secret tlscrypt.key
+```
+
+```client``` 端文件：
+```
+openssl req -batch -nodes -new -keyout "my-client.key" -out "my-client.csr" -subj "/CN=my-client" -config ${PKI_CNF}
+openssl ca  -batch -keyfile "ca.key" -cert "ca.crt" -in "my-client.csr" -out "my-client.crt" -config ${PKI_CNF} -extensions my-clien
+```
+
+设置文件权限：
+```
+chmod 0600 ca.key
+chmod 0600 my-server.key
+chmod 0600 my-client.key
+```
+
+## 4. 生成 DH 文件
+```
+openssl dhparam -out dh2048.pem 2048
+```
+
+# III. 配置网络
+ios 系统不支持 tap, 下面设置将只配置 tun 模式：
+## 1. 创建 VPN 接口
+```
+uci set network.vpn0=interface
+uci set network.vpn0.ifname=tun0
+uci set network.vpn0.proto=static
+uci set network.vpn0.ipaddr=10.0.100.1
+uci set network.vpn0.netmask=255.255.255.0
+```
+## 2. 设置防火墙，让 OpenVPN 端口通过
+```
+uci set firewall.Allow_OpenVPN_Inbound=rule
+uci set firewall.Allow_OpenVPN_Inbound.target=ACCEPT
+uci set firewall.Allow_OpenVPN_Inbound.src=*
+uci set firewall.Allow_OpenVPN_Inbound.proto=udp
+uci set firewall.Allow_OpenVPN_Inbound.dest_port=10050
+```
+## 3. 让设置生效
+```
+uci commit network
+/etc/init.d/network reload
+uci commit firewall
+/etc/init.d/firewall reload
+```
+
+# IV. 配置 OpenVPN
+拷贝文件:
+```
+cp /etc/openvpn/ssl/ca.crt /etc/openvpn/ssl/my-server.* /etc/openvpn/ssl/dh2048.pem /etc/openvpn
+```
+生成配置:
+```
+echo > /etc/config/openvpn
+uci set openvpn.myvpn=openvpn
+uci set openvpn.myvpn.enabled=1
+uci set openvpn.myvpn.dev=tun
+uci set openvpn.myvpn.port=10050
+uci set openvpn.myvpn.proto='tcp-server'
+uci set openvpn.myvpn.mssfix=1420
+uci set openvpn.myvpn.keepalive='10 60'
+uci set openvpn.myvpn.verb=3
+uci set openvpn.myvpn.server='10.0.100.0 255.255.255.0'
+uci set openvpn.myvpn.client_to_client=1
+uci set openvpn.myvpn.ca='/etc/openvpn/ca.crt'
+uci set openvpn.myvpn.dh='/etc/openvpn/dh2048.pem'
+uci set openvpn.myvpn.cert='/etc/openvpn/my-server.crt'
+uci set openvpn.myvpn.key='/etc/openvpn/my-server.key'
+uci set openvpn.myvpn.max_clients=10
+uci set openvpn.myvpn.cipher='AES-256-CBC'
+uci set openvpn.myvpn.tls_crypt='/etc/openvpn/tlscrypt.key'
+uci set openvpn.myvpn.duplicate_cn=1
+uci set openvpn.myvpn.topology='subnet'
+uci add_list openvpn.myvpn.push='dhcp-option DNS 10.0.100.1'
+uci add_list openvpn.myvpn.push='redirect-gateway def1'
+uci commit openvpn
+```
+启动服务
+```
+/etc/init.d/openvpn enable
+/etc/init.d/openvpn start
+```
+
+# V. 生成 `*.ovpn`，导入 OpenVPN Connect
+`myserver.ovpn` 内容如下：
+```
+dev tun
+proto tcp-client
+verb 3
+
+<ca>
+将 /etc/openvpn/ca.crt 内容粘贴到此处
+</ca>
+
+<cert>
+将 /etc/openvpn/my-client.crt 内容粘贴到此处
+</cert>
+
+<key>
+将 /etc/openvpn/my-client.key 内容粘贴到此处
+</key>
+
+<tls-crypt>
+将 /etc/openvpn/tlscrypt.key 内容粘贴到此处
+</tls-crypt>
+
+cipher AES-256-CBC
+client
+topology subnet
+pull
+remote-cert-tls server
+remote afraidfire.top 10050
+```
+将文件 email 到 ios 手机上，用 `OpenVPN Connect` app 导入。

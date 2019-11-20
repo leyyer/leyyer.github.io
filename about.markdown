@@ -4,4 +4,5 @@ title: About
 permalink: /about/
 ---
 
-Contach me [mail](leyyer@gmail.com)
+
+I have nothing to say !
