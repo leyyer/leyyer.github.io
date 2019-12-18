@@ -68,7 +68,7 @@ EOF
 
 ```server``` 端文件：
 ```
-penssl req -batch -nodes -new -keyout "ca.key" -out "ca.crt" -x509 -config ${PKI_CNF}  ## x509 (self-signed) for the CA
+openssl req -batch -nodes -new -keyout "ca.key" -out "ca.crt" -x509 -config ${PKI_CNF}  ## x509 (self-signed) for the CA
 openssl req -batch -nodes -new -keyout "my-server.key" -out "my-server.csr" -subj "/CN=my-server" -config ${PKI_CNF}
 openssl ca  -batch -keyfile "ca.key" -cert "ca.crt" -in "my-server.csr" -out "my-server.crt" -config ${PKI_CNF} -extensions my-server
 openvpn --genkey --secret tlscrypt.key
@@ -99,7 +99,7 @@ ios 系统不支持 tap, 下面设置将只配置 tun 模式：
 uci set network.vpn0=interface
 uci set network.vpn0.ifname=tun0
 uci set network.vpn0.proto=static
-uci set network.vpn0.ipaddr=10.0.100.1
+uci set network.vpn0.ipaddr=10.8.0.1
 uci set network.vpn0.netmask=255.255.255.0
 ```
 ## 2. 设置防火墙，让 OpenVPN 端口通过
@@ -108,7 +108,7 @@ uci set firewall.Allow_OpenVPN_Inbound=rule
 uci set firewall.Allow_OpenVPN_Inbound.target=ACCEPT
 uci set firewall.Allow_OpenVPN_Inbound.src=*
 uci set firewall.Allow_OpenVPN_Inbound.proto=udp
-uci set firewall.Allow_OpenVPN_Inbound.dest_port=10050
+uci set firewall.Allow_OpenVPN_Inbound.dest_port=1194
 ```
 ## 3. 让设置生效
 ```
@@ -129,12 +129,12 @@ echo > /etc/config/openvpn
 uci set openvpn.myvpn=openvpn
 uci set openvpn.myvpn.enabled=1
 uci set openvpn.myvpn.dev=tun
-uci set openvpn.myvpn.port=10050
+uci set openvpn.myvpn.port=1194
 uci set openvpn.myvpn.proto='tcp-server'
 uci set openvpn.myvpn.mssfix=1420
 uci set openvpn.myvpn.keepalive='10 60'
 uci set openvpn.myvpn.verb=3
-uci set openvpn.myvpn.server='10.0.100.0 255.255.255.0'
+uci set openvpn.myvpn.server='10.8.0.0 255.255.255.0'
 uci set openvpn.myvpn.client_to_client=1
 uci set openvpn.myvpn.ca='/etc/openvpn/ca.crt'
 uci set openvpn.myvpn.dh='/etc/openvpn/dh2048.pem'
@@ -145,7 +145,7 @@ uci set openvpn.myvpn.cipher='AES-256-CBC'
 uci set openvpn.myvpn.tls_crypt='/etc/openvpn/tlscrypt.key'
 uci set openvpn.myvpn.duplicate_cn=1
 uci set openvpn.myvpn.topology='subnet'
-uci add_list openvpn.myvpn.push='dhcp-option DNS 10.0.100.1'
+uci add_list openvpn.myvpn.push='dhcp-option DNS 10.8.0.1'
 uci add_list openvpn.myvpn.push='redirect-gateway def1'
 uci commit openvpn
 ```
@@ -183,6 +183,6 @@ client
 topology subnet
 pull
 remote-cert-tls server
-remote afraidfire.top 10050
+remote afraidfire.top 1194
 ```
 将文件 email 到 ios 手机上，用 `OpenVPN Connect` app 导入。
