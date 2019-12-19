@@ -1,0 +1,125 @@
+---
+layout: post
+title:  "配置 tun2socks"
+date:   2019-12-19 10:47:00 +0800
+categories: openwrt
+---
+
+### I. 安装 tun2socks
+下载 [go-tun2socks](https://github.com/eycorsican/go-tun2socks), 并将 `tun2socks` 安装到 `/usr/bin`目录，并赋予可执行权限。
+
+### II. 配置
+
+#### 1. 添加一个 `interface`, 这里假定为 `tunx0` :
+```
+uci set network.socks=interface
+uci set network.socks.ifname=tunx0
+uci set network.socks.proto=none
+uci commint network
+```
+
+#### 2. 添加一个转发 `socks` 设备的 firewall zone :
+```
+uci add firewall.zone
+uci set firewall.@zone[-1].name=socks
+uci set firewall.@zone[-1].network=socks
+uci set firewall.@zone[-1].output=ACCEPT
+uci set firewall.@zone[-1].input=REJECT
+uci set firewall.@zone[-1].forward=REJECT
+uci set firewall.@zone[-1].masq=1
+uci commit firewall
+uci add firewall.forwarding
+uci set firewall.@forwarding[-1].src='lan'
+uci set firewall.@forwarding[-1].dest=socks
+uci commit firewall
+```
+
+### III. 添加一个启动脚本 ```/etc/init.d/tun2socks```:
+```
+#!/bin/sh /etc/rc.common
+USE_PROCD=1
+START=99
+STOP=01
+
+PROG=/usr/bin/tun2socks
+
+DEVNAME=tunx0
+SERVER=127.0.0.1:1080
+TUN_ADDR=172.18.0.1
+SOCK_ADDR=172.18.0.2
+TUN_DNS=8.8.4.4
+DEBUG_LVL=error
+
+add_tundev() {
+	ip tuntap add dev ${DEVNAME} mode tun user nobody
+	ip address add local ${TUN_ADDR} peer ${SOCK_ADDR} dev ${DEVNAME}
+	ip link set ${DEVNAME} up
+	ip route add ${TUN_DNS} dev ${DEVNAME}
+	ip route add default dev ${DEVNAME} via ${SOCK_ADDR} table gfwtable
+}
+
+start_service() {
+    sleep 3
+	add_tundev
+    sleep 2
+	procd_open_instance
+	procd_set_param command "$PROG" 
+	procd_append_param command -tunPersist 
+	procd_append_param command -tunName ${DEVNAME} 
+	procd_append_param command -tunAddr ${SOCK_ADDR} 
+	procd_append_param command -tunGw ${TUN_ADDR} 
+	procd_append_param command -proxyServer ${SERVER}
+	procd_append_param command -tunDns ${TUN_DNS}
+	procd_append_param command -loglevel ${DEBUG_LVL}
+
+	procd_set_param respawn
+
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+
+	procd_close_instance
+}
+```
+运行该服务:
+```
+/etc/init.d/tun2socks enable
+/etc/init.d/tun2socks start
+```
+### IV. 添加策略路由(可选)
+
+实现的原理是： 将特定 ip 加入到一个 ipset 中，暂定表名为 socks，通过 iptables 将目的到该 ipset 的流量打好标记，暂定为
+0x2048，再将该标记的流量使用路由表 socks， 使用该部分流量走 `tunx0` 接口。配置策略路由, 步骤如下：
+
+#### 1. 添加一个新的路由表：
+```
+echo "100 socktab" >> /etc/iproute2/rt_tables
+```
+
+#### 2. 添加一个路由规则:
+```
+uci add network.rule
+uci set network.@rule[-1].mark=0x2048
+uci set network.@rule[-1].priority=1000
+uci set network.@rule[-1].lookup=socktab
+uci commit network
+```
+
+#### 3. 添加一个 ipset 的防火墙规则
+```
+uci add firewall.ipset
+uci set firewall.@ipset[-1].enabled=1
+uci set firewall.@ipset[-1].name=sockips
+uci set firewall.@ipset[-1].match=dst_ip
+uci set firewall.@ipset[-1].storage=hash
+uci commit firewall
+```
+#### 4. 在 /etc/firewall.user 中添加打标记的规则, 内容如下:
+
+```
+iptables -t mangle -N FWDSOCKS
+iptables -t mangle -A FWDSOCKS -m set --match-set sockips dst -j MARK --set-mark 0x2048
+iptables -t mangle -A OUTPUT -j FWDSOCKS
+iptables -t mangle -A PREROUTING -j FWDSOCKS
+```
+
+至此配置完成，重新加载 network 和 firewall , 或者直接重启。
